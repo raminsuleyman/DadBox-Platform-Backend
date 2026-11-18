@@ -1,0 +1,27 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { randomUUID } from 'node:crypto';
+import { config } from './lib/config.js';
+import { errorHandler, HttpError } from './lib/http.js';
+import profile from './routes/profile.js';
+import businesses from './routes/businesses.js';
+import boxes from './routes/boxes.js';
+import reservations from './routes/reservations.js';
+import community from './routes/community.js';
+import uploads from './routes/uploads.js';
+import admin from './routes/admin.js';
+
+export const app=express();
+app.disable('x-powered-by');
+if (config.TRUST_PROXY==='1') app.set('trust proxy',1);
+app.use((req,res,next)=>{ req.requestId=randomUUID(); res.setHeader('X-Request-Id',req.requestId); next(); });
+app.use(helmet());
+app.use(cors({origin:config.FRONTEND_URL,credentials:false,methods:['GET','POST','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','Idempotency-Key']}));
+app.use(express.json({limit:'128kb'}));
+app.use('/api/',rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-7',legacyHeaders:false,handler:(_req,res)=>res.status(429).json({success:false,error:{code:'RATE_LIMITED',message:'Çox sayda sorğu. Daha sonra yenidən cəhd edin.'}})}));
+app.get('/health/live',(_req,res)=>res.json({status:'ok'}));
+app.use('/api/v1',profile,businesses,boxes,reservations,community,uploads,admin);
+app.use((_req,_res,next)=>next(new HttpError(404,'NOT_FOUND','Endpoint tapılmadı.')));
+app.use(errorHandler);
